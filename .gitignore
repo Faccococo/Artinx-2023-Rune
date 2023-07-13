@@ -1,0 +1,9 @@
+*.bin
+*.cmake
+*.xml
+build
+cmake-build-release
+cmake-build-debug
+*.mp4
+*.png
+.DS_Store
