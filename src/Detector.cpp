@@ -5,8 +5,11 @@ static Binarizer binarizer;
 std::optional<cv::Mat> getROI(const cv::Mat &src, const cv::Mat &bin)
 {
     // 二值化
-    auto kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
-    cv::dilate(bin, bin, kernel);
+    auto open_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
+    cv::morphologyEx(bin, bin, cv::MORPH_OPEN, open_kernel);
+    auto close_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
+    cv::morphologyEx(bin, bin, cv::MORPH_CLOSE, close_kernel);
+    // cv::dilate(bin, bin, kernel);
     if (config::debug)
     {
         show_image(bin, "dilate");
@@ -166,8 +169,11 @@ int Detector::run()
             cv::imshow("src", src);
         }
         auto startTime = std::chrono::high_resolution_clock::now();
+
         cv::Mat bin = binarizer.binarize(src, config::binary_threshold);
         // cv::Mat bin = binarizer.b_r_binarize(src, config::b_r_threshold);
+        // cv::Mat bin = binarizer.hsv_binarizer(src);
+
         auto maybe_result = detect(src, bin);
         auto endTime = std::chrono::high_resolution_clock::now();
         std::cout << "Execution time: " 

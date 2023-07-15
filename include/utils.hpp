@@ -4,8 +4,8 @@
 
 typedef void (*TrackbarCallBack)(int, void *);
 
-static int window_size_x = 640;
-static int window_size_y = 480;
+static int window_size_x = 320;
+static int window_size_y = 240;
 
 static int add_trackbar(std::string window_name, std::string trackbar_name, TrackbarCallBack onTrackBarSlide, int max_value = 100)
 {
