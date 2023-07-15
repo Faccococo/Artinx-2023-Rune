@@ -10,31 +10,42 @@ enum class Color
 namespace config{
     static bool debug = true;
     static Color detect_color = Color::Red;
-    const static std::string file_path = "/Users/huangzitong/workspace/Robomaster/Artinx-2023-Rune/data/images/red.png";
+    // const static std::string file_path = "/Users/huangzitong/workspace/Robomaster/Artinx-2023-Rune/data/images/red.png";
     // const static std::string file_path = "/Users/huangzitong/workspace/Robomaster/Artinx-2023-Rune/data/videos/blue_2.mp4";
+    const static std::string file_path = "/Users/huangzitong/workspace/Robomaster/Artinx-2023-Rune/data/videos/red_sim_1.mp4";
 
     static int binary_threshold = 100;
-    static int b_r_threshold = 15;
-    static int dilate_kernel_size = 6;
-    static double convex_hull_thresh = 0.5; // real ratio is convec_hull_thresh / 100
+    static int b_r_threshold = 30;
+    static int dilate_kernel_size = 8;
+    static double min_convex_hull_thresh = 0.6;
+    static double max_convex_hull_thresh = 0.85; // real ratio is convec_hull_thresh / 100
     static int min_contour_area = 100;
 
 
     static void set_binary_thresh(int pos, void* data)
     {
-        config::binary_threshold = pos;
+        config::binary_threshold = pos * 10;
     }
     static void set_b_r_threshold(int pos, void* data)
     {
-        config::b_r_threshold = pos;
+        config::b_r_threshold = pos * 10;
+        std::cout << config::b_r_threshold << std::endl;
     }
-    static void set_convex_hull_thresh(int pos, void* data)
+    static void set_dilate_kernel_size(int pos, void* data)
     {
-        config::convex_hull_thresh = pos / 100.0;
+        config::dilate_kernel_size = pos;
+    }
+    static void set_max_convex_hull_thresh(int pos, void* data)
+    {
+        config::max_convex_hull_thresh = pos / 100.0;
+    }
+    static void set_min_convex_hull_thresh(int pos, void* data)
+    {
+        config::min_convex_hull_thresh = pos / 100.0;
     }
     static void set_min_contour_area(int pos, void* data)
     {
-        config::min_contour_area = pos;
+        config::min_contour_area = pos * 100;
     }
 
 }

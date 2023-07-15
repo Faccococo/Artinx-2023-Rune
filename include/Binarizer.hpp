@@ -5,6 +5,6 @@
 
 class Binarizer{
 public:
-    cv::Mat binarize(const cv::Mat& src);
-    cv::Mat b_r_binarize(const cv::Mat& src);
+    cv::Mat binarize(const cv::Mat& src, int threshold);
+    cv::Mat b_r_binarize(const cv::Mat& src, int threshold);
 };
