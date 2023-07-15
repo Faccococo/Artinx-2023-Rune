@@ -4,6 +4,12 @@
 
 typedef void (*TrackbarCallBack)(int, void*);
 
+static int add_trackbar(std::string window_name, std::string trackbar_name, TrackbarCallBack onTrackBarSlide, int max_value=255)
+{
+    cv::createTrackbar(trackbar_name, window_name, NULL, max_value, onTrackBarSlide);
+    return 0;
+}
+
 static int show_image(const cv::Mat &src, std::string windows_name, std::string trackbar_name, TrackbarCallBack onTrackBarSlide, int max_value=255)
 {
     cv::imshow(windows_name, src);

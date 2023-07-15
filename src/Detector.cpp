@@ -41,7 +41,7 @@ DetectResult Detector::detect(const cv::Mat& src, const cv::Mat &bin)
     {
         std::cout << "no contour found!!!" << std::endl;
     }
-    std::cout << "src have " << contours.size() << " contours." << std::endl;
+    // std::cout << "src have " << contours.size() << " contours." << std::endl;
 
     //绘制轮廓
     // if (config::debug)
@@ -56,29 +56,33 @@ DetectResult Detector::detect(const cv::Mat& src, const cv::Mat &bin)
     int minContourIndex = -1;
 
     std::vector<std::vector<cv::Point>> candidate_contours;
+    std::vector<std::vector<cv::Point>> hulls;
 
     for (int i = 0; i < contours.size(); i++) {
-        // Calculate contour area
+
         double contourArea = cv::contourArea(contours[i]);
 
-        // Calculate convex hull
-        std::vector<cv::Point> hull;
-        cv::convexHull(contours[i], hull);
-
-        // Calculate convex hull area
-        double hullArea = cv::contourArea(hull);
-
-        // Calculate ratio
-        double ratio = contourArea / hullArea;
-
-        if (ratio < config::convex_hull_thresh)
+        if (contourArea < config::min_contour_area)
         {
             continue;
         }
 
+        // 凸包检测
+        std::vector<cv::Point> hull;
+        cv::convexHull(contours[i], hull);
+
+        // 计算轮廓面积与轮廓凸包面积比
+        double hullArea = cv::contourArea(hull);
+        double ratio = contourArea / hullArea;
+
+        // std::cout << config::convex_hull_thresh << std::endl;
+        if (ratio < config::convex_hull_thresh)
+        {
+            continue;
+        }
+        hulls.push_back(hull);
         candidate_contours.push_back(contours[i]);
 
-        // If ratio is below threshold and area is smaller than current minimum
         if (contourArea < minArea) {
             minArea = contourArea;
             minContourIndex = i;
@@ -88,16 +92,16 @@ DetectResult Detector::detect(const cv::Mat& src, const cv::Mat &bin)
     if (config::debug)
     {
         cv::Mat candidate_contour_img = cv::Mat::zeros(src.size(), src.type());
-        if(candidate_contours.size() > 0)
+        if(candidate_contours.size() > 0 && hulls.size() > 0 && minContourIndex < candidate_contours.size())
         {
-            cv::drawContours(candidate_contour_img, candidate_contour_img, -1, cv::Scalar(255, 255, 255), 3);
+            cv::drawContours(candidate_contour_img, hulls, -1, cv::Scalar(255, 0, 255), 3);
+            cv::drawContours(candidate_contour_img, candidate_contours, -1, cv::Scalar(255, 255, 255), 3);
             cv::drawContours(candidate_contour_img, candidate_contours, minContourIndex, cv::Scalar(0, 0, 255), 3);
         }
-        std::cout << "candidate contour number: " << candidate_contours.size() << std::endl;
+        // std::cout << "candidate contour number: " << candidate_contours.size() << std::endl;
         show_image(candidate_contour_img, "R", "convex_thresh", config::set_convex_hull_thresh, 100);
+        add_trackbar("R", "min_contour_area", config::set_min_contour_area, 1000);
     }
-
-
 
     DetectResult result;
     return result;
