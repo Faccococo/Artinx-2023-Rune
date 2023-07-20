@@ -2,8 +2,10 @@
 *.cmake
 *.xml
 build
+data
 cmake-build-release
 cmake-build-debug
 *.mp4
 *.png
 .DS_Store
+.vscode
