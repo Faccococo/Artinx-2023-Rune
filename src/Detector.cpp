@@ -2,9 +2,58 @@
 
 static Binarizer binarizer;
 
+std::optional<DetectResult> getTarget(const cv::Mat &src, const cv::Mat &bin)
+{
+    // 膨胀
+    auto open_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
+    cv::morphologyEx(bin, bin, cv::MORPH_OPEN, open_kernel);
+    auto close_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
+    cv::morphologyEx(bin, bin, cv::MORPH_CLOSE, close_kernel);
+    cv::morphologyEx(bin, bin, cv::MORPH_OPEN, open_kernel);
+
+    if (config::debug)
+    {
+        show_image(bin, "dilate");
+    }
+
+    // 提取轮廓
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(bin, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    double maxArea = -1.0;
+    std::vector<cv::Point> targetContour;
+    for (auto contour : contours)
+    {
+        auto area = cv::contourArea(contour);
+        if (area > maxArea)
+        {
+            maxArea = area;
+            targetContour = contour;
+        }
+    }
+    std::vector<cv::Vec3f> circles;
+    cv::HoughCircles(bin, circles, cv::HOUGH_GRADIENT, 1, 20);
+
+    // if (config::debug)
+    // {
+    //     cv::Mat img = cv::Mat::zeros(src.size(), src.type());;
+    //     // 绘制检测到的圆形
+    //     for (const cv::Vec3f &circle : circles)
+    //     {
+    //         cv::Point center(circle[0], circle[1]);
+    //         int radius = circle[2];
+    //         cv::circle(img, center, radius, cv::Scalar(255, 255, 255), 2);
+    //     }
+    //     show_image(img, "circles");
+    // }
+
+    DetectResult detectedResult;
+    return detectedResult;
+}
+
 std::optional<cv::Mat> getROI(const cv::Mat &src, const cv::Mat &bin)
 {
-    // 二值化
+    // 膨胀
     auto open_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
     cv::morphologyEx(bin, bin, cv::MORPH_OPEN, open_kernel);
     auto close_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
@@ -111,16 +160,37 @@ std::optional<cv::Mat> getROI(const cv::Mat &src, const cv::Mat &bin)
 
 std::optional<DetectResult> Detector::detect(const cv::Mat &src, const cv::Mat &bin)
 {
+    DetectResult result;
     auto roi_img_optional = getROI(src, bin);
     if (!roi_img_optional.has_value())
-        return std::nullopt;
+    {
+        return result;
+    }
+    
     cv::Mat roi_img = roi_img_optional.value();
     if (config::debug)
     {
         show_image(roi_img, "target roi");
     }
 
-    DetectResult result;
+    cv::Mat roi_bin = binarizer.binarize(roi_img, config::roi_binary_thresh);
+    if(config::debug)
+    {
+        show_image(roi_bin, "roi_bin");
+    }
+
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(roi_bin, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    std::sort(contours.begin(), contours.end(), [](const std::vector<cv::Point>& a, const std::vector<cv::Point>& b) {
+        return cv::contourArea(a) > cv::contourArea(b);
+    });
+
+    
+
+
+    
+
     return result;
 }
 
@@ -128,7 +198,7 @@ cv::Mat &Detector::read_frame()
 {
     static cv::Mat frame;
     static bool img_read = false; // 是否已经读取过图像
-    if (config::file_path.find(".mp4") != std::string::npos)
+    if (config::file_path.find(".mp4") != std::string::npos || config::file_path.find(".MP4") != std::string::npos)
     {
         // 输入为视频
         static cv::VideoCapture cap(config::file_path);
@@ -156,10 +226,15 @@ int Detector::run()
     cv::namedWindow("src", cv::WINDOW_NORMAL);
     add_trackbar("src", "BinThresh", config::set_binary_thresh, 25);
     add_trackbar("src", "BRThresh", config::set_b_r_threshold, 25);
+    // add_trackbar("src", "hsv", config::set_v_lower_bound, 25);
     add_trackbar("src", "kernelSize", config::set_dilate_kernel_size, 21);
-    add_trackbar("src", "maxAreaRatio", config::set_max_convex_hull_thresh, 100);
-    add_trackbar("src", "minAreaRatio", config::set_min_convex_hull_thresh, 100);
-    add_trackbar("src", "minArea", config::set_min_contour_area);
+    // add_trackbar("src", "maxAreaRatio", config::set_max_convex_hull_thresh, 100);
+    // add_trackbar("src", "minAreaRatio", config::set_min_convex_hull_thresh, 100);
+    // add_trackbar("src", "minArea", config::set_min_contour_area);
+    // add_trackbar("src", "hsv_upper", config::set_hsv_upper, 120);
+    // add_trackbar("src", "hsv_lower", config::set_hsv_lower, 120);
+    add_trackbar("src", "roi_bin_thresh", config::set_roi_binary_thresh, 25);
+
     while (true)
     {
 
@@ -170,15 +245,17 @@ int Detector::run()
         }
         auto startTime = std::chrono::high_resolution_clock::now();
 
-        cv::Mat bin = binarizer.binarize(src, config::binary_threshold);
+        // cv::Mat bin = binarizer.binarize(src, config::binary_threshold);
         // cv::Mat bin = binarizer.b_r_binarize(src, config::b_r_threshold);
-        // cv::Mat bin = binarizer.hsv_binarizer(src);
+        cv::Mat bin = config::detect_color == Color::Blue ? binarizer.hsv_binarizer(src, config::upperBlue, config::lowerBlue) : binarizer.hsv_binarizer(src, config::upperRed, config::lowerRed);
 
         auto maybe_result = detect(src, bin);
+        // auto maybe_result = getTarget(src, bin);
+
         auto endTime = std::chrono::high_resolution_clock::now();
-        std::cout << "Execution time: " 
-                << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count() 
-                << " milliseconds" << std::endl;
+        // std::cout << "Execution time: "
+        //         << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count()
+        //         << " milliseconds" << std::endl;
 
         if (maybe_result.has_value())
             result = maybe_result.value();

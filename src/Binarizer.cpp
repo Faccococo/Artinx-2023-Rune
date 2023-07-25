@@ -3,12 +3,12 @@
 cv::Mat Binarizer::binarize(const cv::Mat &src, int threshold)
 {
     cv::Mat bin;
+    if (src.empty())
+    {
+        return bin;
+    }
     cv::cvtColor(src, bin, cv::COLOR_BGR2GRAY);
     cv::threshold(bin, bin, threshold, 255, cv::THRESH_BINARY);
-    if (config::debug)
-    {
-        show_image(bin, "bin");
-    }
     return bin;
 }
 
@@ -28,11 +28,8 @@ cv::Mat Binarizer::b_r_binarize(const cv::Mat &src, int threshold)
     return bin;
 }
 
-cv::Mat Binarizer::hsv_binarizer(const cv::Mat &src)
+cv::Mat Binarizer::hsv_binarizer(const cv::Mat &src, const cv::Scalar& upper_bound, const cv::Scalar& lower_bound)
 {
-    cv::Scalar upper_bound = config::detect_color == Color::Blue? config::upperBlue : config::lowerBlue;
-    cv::Scalar lower_bound = config::detect_color == Color::Blue? config::lowerBlue : config::upperBlue;
-
     cv::Mat hsv_img, bin;
     cv::cvtColor(src, hsv_img, cv::COLOR_BGR2HSV);
     cv::inRange(hsv_img, lower_bound, upper_bound, bin);
