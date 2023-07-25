@@ -58,7 +58,7 @@
 			"command": "cmake",
 			"args": [
 				"--build", "${workspaceFolder}/cmake-build-release",     // 目标文件夹，注意对应前置任务的目标文件夹，除非你知道自己在干什么
-				"--target", "ArtinxHub",
+				"--target", "Rune",
 				"-j", "8"                                           // 同时进行的编译任务数，配置高可改高，过高可能会爆内存
 			],
 			"group": "build",

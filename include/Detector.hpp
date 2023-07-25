@@ -1,31 +1,36 @@
 #pragma once
-#include <opencv2/opencv.hpp>
+#include <array>
+#include <fmt/format.h>
 #include <iostream>
+#include <opencv2/opencv.hpp>
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
-#include <fmt/format.h>
 
-#include "DetectResult.hpp"
-#include "config.hpp"
 #include "Binarizer.hpp"
+#include "config.hpp"
 #include "utils.hpp"
 
-struct Rune{
+struct Rune {
     std::vector<cv::Point> contour;
     cv::Rect2f roi;
 };
 
+// key_points:
+// 0 & 1 = A's outer edge
+// 2 & 3 = B's inner edge
+// clockwise
 struct TargetLeaf {
-    std::vector<cv::Point> contour_teeth_A;
-    std::vector<cv::Point> contour_teeth_B;
+    cv::RotatedRect rect_A;
+    cv::RotatedRect rect_B;
+    std::vector<cv::Point2f> key_points;
+    double orientation;     // orientation of ray out from rune center, -pi ~ pi
     cv::Rect2f roi;
 };
 
-struct LogoROI{
+struct DetectResult {
+    std::vector<cv::Point2f> key_points;
     cv::Point2f center;
-    double radius;
-    double expected_size;
 };
 
 class Detector {
@@ -33,16 +38,18 @@ public:
     int run();
 
 private:
-
     cv::Mat src;
     cv::Mat bin_low, bin_high, bin_logo;
-    cv::Point2f last_center = cv::Point2f(0, 0);
+
+    double OUTER_A_RADIUS = 655;
+    double INNER_B_RADIUS = 747;
+    double AIM_CENTER_RADIUS = 700;
+    double LOGO_SIZE = 52 * std::sqrt(2);
 
     cv::Mat& read_frame();
     std::optional<DetectResult> detect(const cv::Mat& src);
     std::optional<cv::Rect> getTargetLeafROI(const cv::Mat& src, const cv::Mat& bin);
     std::optional<TargetLeaf> getTargetLeaf(const cv::Mat& src, const cv::Mat& bin, const cv::Rect& roi);
-    std::optional<LogoROI> getLogoROI(const cv::Mat& src, const cv::Mat& bin);
-
+    std::optional<std::tuple<cv::Rect, double>> getLogoROIAndSize(const TargetLeaf& target_leaf, cv::MatSize src_size);
+    std::optional<cv::Rect> getLogo(const cv::Mat& src, const cv::Mat& bin, const cv::Rect& logo_roi, double expected_size);
 };
-
