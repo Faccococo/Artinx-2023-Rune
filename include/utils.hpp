@@ -13,10 +13,10 @@ static int add_trackbar(std::string window_name, std::string trackbar_name, Trac
     return 0;
 }
 
-static int show_image(const cv::Mat &src, std::string window_name, std::string trackbar_name, TrackbarCallBack onTrackBarSlide, int max_value = 255)
-{
-    try
-    {
+// where is src????????
+static int show_image(const cv::Mat& src, std::string window_name, std::string trackbar_name, TrackbarCallBack onTrackBarSlide,
+                      int max_value = 255) {
+    try {
         cv::namedWindow(window_name, cv::WINDOW_NORMAL);
         cv::resizeWindow(window_name, window_size_x, window_size_y);
         cv::createTrackbar(trackbar_name, window_name, NULL, max_value, onTrackBarSlide);

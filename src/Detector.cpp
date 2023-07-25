@@ -2,61 +2,18 @@
 
 static Binarizer binarizer;
 
-std::optional<DetectResult> getTarget(const cv::Mat &src, const cv::Mat &bin)
-{
-    // 膨胀
-    auto open_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
-    cv::morphologyEx(bin, bin, cv::MORPH_OPEN, open_kernel);
-    auto close_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
-    cv::morphologyEx(bin, bin, cv::MORPH_CLOSE, close_kernel);
-    cv::morphologyEx(bin, bin, cv::MORPH_OPEN, open_kernel);
+using Coutour = std::vector<cv::Point>;
 
-    if (config::debug)
-    {
-        show_image(bin, "dilate");
-    }
-
-    // 提取轮廓
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(bin, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-
-    double maxArea = -1.0;
-    std::vector<cv::Point> targetContour;
-    for (auto contour : contours)
-    {
-        auto area = cv::contourArea(contour);
-        if (area > maxArea)
-        {
-            maxArea = area;
-            targetContour = contour;
-        }
-    }
-    std::vector<cv::Vec3f> circles;
-    cv::HoughCircles(bin, circles, cv::HOUGH_GRADIENT, 1, 20);
-
-    // if (config::debug)
-    // {
-    //     cv::Mat img = cv::Mat::zeros(src.size(), src.type());;
-    //     // 绘制检测到的圆形
-    //     for (const cv::Vec3f &circle : circles)
-    //     {
-    //         cv::Point center(circle[0], circle[1]);
-    //         int radius = circle[2];
-    //         cv::circle(img, center, radius, cv::Scalar(255, 255, 255), 2);
-    //     }
-    //     show_image(img, "circles");
-    // }
-
-    DetectResult detectedResult;
-    return detectedResult;
-}
-
-std::optional<cv::Mat> getROI(const cv::Mat &src, const cv::Mat &bin)
-{
-    // 膨胀
+std::optional<cv::Rect> Detector::getTargetLeafROI(const cv::Mat& src, const cv::Mat& bin) {
+    // 二值化
     auto open_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));
     cv::morphologyEx(bin, bin, cv::MORPH_OPEN, open_kernel);
-    auto close_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
+
+    if(config::rough_dilate_kernel_size % 2 == 0) {  // 避免kernel_size为偶数或0
+        config::rough_dilate_kernel_size += 1;
+    }
+    auto close_kernel =
+        cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::rough_dilate_kernel_size, config::rough_dilate_kernel_size));
     cv::morphologyEx(bin, bin, cv::MORPH_CLOSE, close_kernel);
     // cv::dilate(bin, bin, kernel);
     if (config::debug)
@@ -65,7 +22,7 @@ std::optional<cv::Mat> getROI(const cv::Mat &src, const cv::Mat &bin)
     }
 
     // 提取轮廓
-    std::vector<std::vector<cv::Point>> contours;
+    std::vector<Coutour> contours;
     std::vector<cv::Vec4i> hierarchy;
     cv::findContours(bin, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
     if (contours.size() <= 0)
@@ -78,47 +35,42 @@ std::optional<cv::Mat> getROI(const cv::Mat &src, const cv::Mat &bin)
     double max_area = 0;
     int max_contour_index = -1;
 
-    std::vector<std::vector<cv::Point>> candidate_contours;
-    std::vector<cv::Point> target_contour;
-    std::vector<std::vector<cv::Point>> hulls;
+    std::vector<Coutour> candidate_contours;
+    Coutour target_contour;
+    std::vector<Coutour> hulls;
 
     for (int i = 0; i < contours.size(); i++)
     {
 
         double contour_area = cv::contourArea(contours[i]);
-
         // 面积过小
-        // if (contour_area < config::min_contour_area)
-        // {
-        //     continue;
-        // }
-
-        // 有子轮廓
-        if (hierarchy[i][2] != -1)
-        {
+        if(contour_area < config::min_contour_area) {
+            continue;
+        }
+        // 有父轮廓
+        if(hierarchy[i][2] != -1) {
             continue;
         }
 
         // 凸包检测
-        std::vector<cv::Point> hull;
+        Coutour hull;
         cv::convexHull(contours[i], hull);
 
         // 计算轮廓面积与轮廓凸包面积比
         double hull_area = cv::contourArea(hull);
         double ratio = contour_area / hull_area;
 
-        // std::cout << config::min_convex_hull_thresh << std::endl;
+        // std::cout << config::min_rough_target_hull_thresh << std::endl;
         // 筛掉凸包轮廓
-        if (ratio > config::max_convex_hull_thresh || ratio < config::min_convex_hull_thresh)
-        {
+        if(ratio > config::max_rough_target_hull_thresh || ratio < config::min_rough_target_hull_thresh) {
             continue;
         }
 
         hulls.push_back(hull);
         candidate_contours.push_back(contours[i]);
 
-        if (contour_area > max_area)
-        {
+        // 寻找符合条件的最大轮廓
+        if(contour_area > max_area) {
             max_area = contour_area;
             max_contour_index = i;
             target_contour = contours[i];
@@ -135,7 +87,7 @@ std::optional<cv::Mat> getROI(const cv::Mat &src, const cv::Mat &bin)
                 cv::Moments mom = cv::moments(contour);
                 cv::Point center(mom.m10 / mom.m00, mom.m01 / mom.m00);
                 auto area = cv::contourArea(contour);
-                std::vector<cv::Point> hull_debug;
+                Coutour hull_debug;
                 cv::convexHull(contour, hull_debug);
                 auto hull_area = cv::contourArea(hull_debug);
                 cv::putText(candidate_contour_img, fmt::format("{:.2f}", area / hull_area), center, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255, 255, 255), 2);
@@ -148,29 +100,97 @@ std::optional<cv::Mat> getROI(const cv::Mat &src, const cv::Mat &bin)
         // std::cout << "candidate contour number: " << candidate_contours.size() << std::endl;
         show_image(candidate_contour_img, "target");
     }
-    if (max_contour_index != -1)
-    {
-        Rune targetRune;
-        targetRune.contour = target_contour;
-        cv::Rect2f roi = cv::boundingRect(targetRune.contour);
-        cv::Mat roi_img = src(roi);
-        return roi_img;
+    if(max_contour_index != -1) {
+        return cv::boundingRect(target_contour);
     }
+    return std::nullopt;
 }
 
-std::optional<DetectResult> Detector::detect(const cv::Mat &src, const cv::Mat &bin)
-{
-    DetectResult result;
-    auto roi_img_optional = getROI(src, bin);
-    if (!roi_img_optional.has_value())
-    {
-        return result;
+std::optional<TargetLeaf> Detector::getTargetLeaf(const cv::Mat& src, const cv::Mat& bin, const cv::Rect& roi){
+    cv::Mat roi_bin = bin(roi);
+    //闭运算
+    auto close_kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(config::dilate_kernel_size, config::dilate_kernel_size));
+    cv::morphologyEx(roi_bin, roi_bin, cv::MORPH_CLOSE, close_kernel);
+    if(config::debug) {
+        show_image(roi_bin, "getTargetLeaf: close");
     }
-    
-    cv::Mat roi_img = roi_img_optional.value();
-    if (config::debug)
-    {
-        show_image(roi_img, "target roi");
+
+    // 提取轮廓
+    std::vector<Coutour> contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(bin, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+    if(contours.size() <= 0) {
+        std::cout << "no contour found!!!" << std::endl;
+    }
+
+    // 遍历轮廓
+    double max_area_A = 0;
+    int max_contour_A_index = -1;
+    int max_contour_B_index = -1;
+
+    std::vector<Coutour> candidate_contours_A;
+    std::vector<Coutour> hulls_A;
+    TargetLeaf target_leaf;
+    target_leaf.roi = roi;
+
+    for(int i = 0; i < contours.size(); i++) {
+
+        double contour_area = cv::contourArea(contours[i]);
+        // // 面积过小
+        // if(contour_area < config::min_contour_area) {
+        //     continue;
+        // }
+        // 有父轮廓
+        if(hierarchy[i][2] != -1) {
+            continue;
+        }
+
+        // 凸包检测
+        Coutour hull;
+        cv::convexHull(contours[i], hull);
+
+        // 计算轮廓面积与轮廓凸包面积比
+        double hull_area = cv::contourArea(hull);
+        double ratio = contour_area / hull_area;
+
+        // std::cout << config::min_rough_target_hull_thresh << std::endl;
+        // 分类凸包轮廓
+        if(ratio > config::max_rough_target_hull_thresh || ratio < config::min_rough_target_hull_thresh) {
+            continue;
+        }
+
+        hulls.push_back(hull);
+        candidate_contours.push_back(contours[i]);
+
+        // 寻找符合条件的最大轮廓
+        if(contour_area > max_area) {
+            max_area = contour_area;
+            max_contour_index = i;
+            target_contour = contours[i];
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<LogoROI> Detector::getLogoROI(const cv::Mat& src, const cv::Mat& bin){
+
+    return std::nullopt;
+}
+
+std::optional<DetectResult> Detector::detect(const cv::Mat& src) {
+    auto roi_img_optional = getTargetLeafROI(src, bin_low);
+    if(!roi_img_optional.has_value())
+        return std::nullopt;
+    cv::Mat roi_img = src(roi_img_optional.value());
+    if(config::debug) {
+        show_image(roi_img, "target leaf roi");
+    }
+    TargetLeaf target_leaf = getTargetLeaf(src, bin_high, roi_img_optional.value()).value();
+    if(config::debug) {
+        cv::Mat target_leaf_img = cv::Mat::zeros(src.size(), src.type());
+        cv::drawContours(target_leaf_img, {target_leaf.contour_teeth_A}, -1, cv::Scalar(255, 255, 255), 3);
+        cv::drawContours(target_leaf_img, {target_leaf.contour_teeth_B}, -1, cv::Scalar(255, 255, 255), 3);
+        show_image(target_leaf_img, "target leaf");
     }
 
     cv::Mat roi_bin = binarizer.binarize(roi_img, config::roi_binary_thresh);
@@ -224,7 +244,9 @@ int Detector::run()
 {
     DetectResult result;
     cv::namedWindow("src", cv::WINDOW_NORMAL);
-    add_trackbar("src", "BinThresh", config::set_binary_thresh, 25);
+    add_trackbar("src", "BinLowThresh", config::set_bin_low_thresh, 25);
+    add_trackbar("src", "BinHighThresh", config::set_bin_high_thresh, 255);
+    add_trackbar("src", "BinLogoThresh", config::set_bin_logo_thresh, 255);
     add_trackbar("src", "BRThresh", config::set_b_r_threshold, 25);
     // add_trackbar("src", "hsv", config::set_v_lower_bound, 25);
     add_trackbar("src", "kernelSize", config::set_dilate_kernel_size, 21);
@@ -245,13 +267,13 @@ int Detector::run()
         }
         auto startTime = std::chrono::high_resolution_clock::now();
 
-        // cv::Mat bin = binarizer.binarize(src, config::binary_threshold);
+        bin_low = binarizer.binarize(src, config::bin_low_threshold);
+        bin_high = binarizer.binarize(src, config::bin_high_threshold);
+        bin_logo = binarizer.binarize(src, config::bin_logo_threshold);
         // cv::Mat bin = binarizer.b_r_binarize(src, config::b_r_threshold);
         cv::Mat bin = config::detect_color == Color::Blue ? binarizer.hsv_binarizer(src, config::upperBlue, config::lowerBlue) : binarizer.hsv_binarizer(src, config::upperRed, config::lowerRed);
 
-        auto maybe_result = detect(src, bin);
-        // auto maybe_result = getTarget(src, bin);
-
+        auto maybe_result = detect(src);
         auto endTime = std::chrono::high_resolution_clock::now();
         // std::cout << "Execution time: "
         //         << std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count()
